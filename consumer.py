@@ -1,58 +1,71 @@
 import json
-import os
-import time
-import requests
-from kafka import KafkaProducer
+import pandas as pd
+import streamlit as st
+from kafka import KafkaConsumer
+import altair as alt
 
-# Read API Key from file
-with open("api_key.txt", "r") as f:
-    API_KEY = f.read().strip()
+KAFKA_TOPIC = "stock_prices"
+KAFKA_SERVER = "localhost:9092"
 
-# List of cryptocurrency symbols to fetch
-CRYPTO_SYMBOLS = ["BTC", "ETH", "LTC"]  # Bitcoin, Ethereum, Litecoin
-MARKET = "USD"  # Market currency
-
-KAFKA_TOPIC = "crypto_prices"
-
-# Initialize Kafka Producer
-producer = KafkaProducer(
-    bootstrap_servers=os.environ.get("KAFKA_HOST", "localhost:9092"),
-    value_serializer=lambda v: json.dumps(v).encode("utf-8"),
+# Initialize Kafka Consumer
+consumer = KafkaConsumer(
+    KAFKA_TOPIC,
+    bootstrap_servers=KAFKA_SERVER,
+    value_deserializer=lambda m: json.loads(m.decode("utf-8")),
 )
 
-def fetch_crypto_data(symbol):
-    """
-    Fetches intraday crypto prices from Alpha Vantage.
-    """
-    url = f"https://www.alphavantage.co/query?function=CRYPTO_INTRADAY&symbol={symbol}&market={MARKET}&interval=5min&apikey={API_KEY}"
-    response = requests.get(url)
+st.title("Real-time Cryptocurrency Prices")
 
-    if response.status_code != 200:
-        print(f"Error fetching {symbol}: {response.text}")
-        return {}
+# Create placeholders for category-based charts
+open_placeholder = st.empty()
+high_placeholder = st.empty()
+low_placeholder = st.empty()
+close_placeholder = st.empty()
+volume_placeholder = st.empty()
 
-    data = response.json()
-    return data.get("Time Series Crypto (5min)", {})
+# Store received data
+data = []
 
-while True:
-    for symbol in CRYPTO_SYMBOLS:
-        crypto_data = fetch_crypto_data(symbol)
+# Function to create a chart with multiple cryptocurrencies
+def create_chart(df, column, title):
+    chart = (
+        alt.Chart(df)
+        .mark_line()
+        .encode(
+            x="timestamp:T",
+            y=alt.Y(column, title=title),
+            color="symbol:N",  # Differentiate cryptos by color
+            tooltip=["timestamp:T", "symbol:N", column],
+        )
+        .properties(width=700, height=300)
+    ).interactive()
+    return chart
 
-        if crypto_data:
-            for timestamp, values in crypto_data.items():
-                record = {
-                    "timestamp": timestamp,
-                    "symbol": symbol,
-                    "open": float(values["1. open"]),
-                    "high": float(values["2. high"]),
-                    "low": float(values["3. low"]),
-                    "close": float(values["4. close"]),
-                    "volume": float(values["5. volume"]),  # Crypto volume can be decimal
-                }
-                print(f"Producing: {record}")
-                producer.send(KAFKA_TOPIC, record)
+# Stream data
+for message in consumer:
+    stock = message.value  # Deserialize message
+    print(stock)  # Debugging
 
-        time.sleep(20)  # Prevent exceeding API rate limits
+    # Append new stock data
+    data.append(stock)
 
-    print("Cycle complete, sleeping for 60 seconds...")
-    time.sleep(60)  # Main sleep to avoid API rate limit
+    # Convert list of dicts to DataFrame
+    df = pd.DataFrame(data)
+
+    # Ensure correct datetime format and sorting
+    df["timestamp"] = pd.to_datetime(df["timestamp"])
+    df = df.sort_values("timestamp")
+
+    # Create charts where each plot contains all cryptocurrencies
+    open_chart = create_chart(df, "open", "Open Prices")
+    high_chart = create_chart(df, "high", "High Prices")
+    low_chart = create_chart(df, "low", "Low Prices")
+    close_chart = create_chart(df, "close", "Close Prices")
+    volume_chart = create_chart(df, "volume", "Trading Volume")
+
+    # Update placeholders with new charts
+    open_placeholder.altair_chart(open_chart, use_container_width=True)
+    high_placeholder.altair_chart(high_chart, use_container_width=True)
+    low_placeholder.altair_chart(low_chart, use_container_width=True)
+    close_placeholder.altair_chart(close_chart, use_container_width=True)
+    volume_placeholder.altair_chart(volume_chart, use_container_width=True)
