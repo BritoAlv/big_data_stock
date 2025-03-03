@@ -4,6 +4,7 @@ import matplotlib.pyplot as plt
 import mplfinance as mpf
 from kafka import KafkaConsumer
 from threading import Thread
+
 from matplotlib.animation import FuncAnimation
 
 KAFKA_TOPIC = "stock_prices"
@@ -19,6 +20,7 @@ consumer = KafkaConsumer(
 # Data storage
 df = pd.DataFrame(columns=["timestamp", "symbol", "open", "high", "low", "close", "volume"])
 
+
 def consume_messages():
     global df
     for message in consumer:
@@ -29,12 +31,14 @@ def consume_messages():
         # Append to dataframe and keep only the latest N data points for performance
         df = pd.concat([df, new_data], ignore_index=True).tail(300)  # Keep recent data
 
+
 # Start Kafka consumer in a separate thread
 thread = Thread(target=consume_messages, daemon=True)
 thread.start()
 
 # Create figure
 fig = plt.figure(figsize=(12, 10))
+
 
 def animate(i):
     if df.empty:
@@ -72,11 +76,11 @@ def animate(i):
         ax_main.scatter(df_crypto.index, df_crypto["high"], label="High Prices", color="green", marker="^", alpha=0.6)
         ax_main.scatter(df_crypto.index, df_crypto["low"], label="Low Prices", color="red", marker="v", alpha=0.6)
 
-
-# Add legend to each subplot
+        # Add legend to each subplot
         ax_main.legend(loc="upper left")
 
     fig.tight_layout()
+
 
 # Set up animation
 ani = FuncAnimation(fig, animate, interval=1000)  # Update every second
