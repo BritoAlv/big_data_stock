@@ -84,4 +84,4 @@ while True:
         time.sleep(1)  # Prevent API rate limit issues``
 
     print("Cycle complete, sleeping for 60 seconds...")
-    time.sleep(10)  # Main sleep to avoid API rate limit
+    time.sleep(1)  # Main sleep to avoid API rate limit
